@@ -1,0 +1,312 @@
+#!/usr/bin/env bash
+#
+# minecraft-mods
+# Wrapper for Minecraft Mod Manager (mmm) operating inside ~/.minecraft.
+# Ensures all commands run with ~/.minecraft as the working directory so
+# the instance's modlist.json is always used.
+#
+
+set -euo pipefail
+
+MINECRAFT_DIR="${MINECRAFT_DIR:-$HOME/.minecraft}"
+
+# Resolve mmm binary
+find_mmm() {
+    if [[ -x "$MINECRAFT_DIR/mmm" ]]; then
+        echo "$MINECRAFT_DIR/mmm"
+    elif [[ -x "$MINECRAFT_DIR/minecraft-mod-manager" ]]; then
+        echo "$MINECRAFT_DIR/minecraft-mod-manager"
+    elif command -v mmm >/dev/null 2>&1; then
+        command -v mmm
+    elif command -v minecraft-mod-manager >/dev/null 2>&1; then
+        command -v minecraft-mod-manager
+    else
+        echo ""
+    fi
+}
+
+MMM_CMD="$(find_mmm)"
+
+if [[ -z "$MMM_CMD" ]]; then
+    echo "Error: 'mmm' executable not found in $MINECRAFT_DIR or in PATH." >&2
+    echo "Please ensure Minecraft Mod Manager is installed." >&2
+    exit 1
+fi
+
+print_main_help() {
+    cat <<EOF
+Usage: minecraft-mods <command> [options]
+
+CLI tool to manage Minecraft mods using Minecraft Mod Manager (mmm),
+always anchored to $MINECRAFT_DIR.
+
+Commands:
+  init [options]               Set up and configure modlist.json (auto-detects version & loader)
+  list, l                      List installed and configured mods
+  add, a <platform> <id>       Add a mod (e.g. minecraft-mods add modrinth sodium)
+  remove <mods...>             Remove one or more mods from config and filesystem
+  update, u                    Update managed mods to the latest matching version
+  install, i                   Download and install all mods from modlist.json
+  scan [options]               Scan mods directory and match mods on Modrinth/CurseForge
+  prune                        Remove unmanaged mods from the mods directory
+  change [game_version]        Change the target Minecraft version
+  help [command]               Display help for mmm commands
+
+Global Options:
+  -h, --help                   Show this help message (or mmm help if command provided)
+  -V, --version                Output the version number
+
+Run 'minecraft-mods init --help' for options specific to initialization.
+EOF
+}
+
+cmd_init() {
+    local GAME_VERSION=""
+    local LOADER=""
+    local RELEASE_TYPES="release,beta"
+    local MODS_FOLDER="./mods"
+    local PREFER="modrinth"
+    local DO_SCAN=true
+    local FORCE=false
+
+    print_init_help() {
+        cat <<EOF
+Usage: minecraft-mods init [OPTIONS]
+
+Automatically set up and configure Minecraft Mod Manager (modlist.json) for $MINECRAFT_DIR.
+
+Options:
+  -g, --game-version <VER>     Minecraft version (e.g. 26.2, 1.21.11). Auto-detected if omitted.
+  -l, --loader <LOADER>        Mod loader (fabric, forge, neoforge, quilt, etc.). Auto-detected if omitted.
+  -r, --release-types <TYPES>  Allowed release types: release, beta, alpha (default: release,beta)
+  -m, --mods-folder <PATH>     Relative or absolute path to mods directory (default: ./mods)
+  -p, --prefer <PLATFORM>      Preferred platform when scanning mods: modrinth or curseforge (default: modrinth)
+      --no-scan                Skip scanning existing mods in the mods folder
+  -f, --force                  Overwrite modlist.json if it already exists
+  -h, --help                   Show this help message
+EOF
+    }
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -g|--game-version)
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --game-version requires an argument." >&2
+                    exit 1
+                fi
+                GAME_VERSION="$2"
+                shift 2
+                ;;
+            -l|--loader)
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --loader requires an argument." >&2
+                    exit 1
+                fi
+                LOADER="$2"
+                shift 2
+                ;;
+            -r|--release-types)
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --release-types requires an argument." >&2
+                    exit 1
+                fi
+                RELEASE_TYPES="$2"
+                shift 2
+                ;;
+            -m|--mods-folder)
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --mods-folder requires an argument." >&2
+                    exit 1
+                fi
+                MODS_FOLDER="$2"
+                shift 2
+                ;;
+            -p|--prefer)
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --prefer requires an argument (modrinth or curseforge)." >&2
+                    exit 1
+                fi
+                PREFER="$2"
+                shift 2
+                ;;
+            --no-scan)
+                DO_SCAN=false
+                shift
+                ;;
+            -f|--force)
+                FORCE=true
+                shift
+                ;;
+            -h|--help)
+                print_init_help
+                exit 0
+                ;;
+            *)
+                echo "Error: Unknown option '$1' for init." >&2
+                print_init_help >&2
+                exit 1
+                ;;
+        esac
+    done
+
+    echo "=========================================="
+    echo "    Minecraft Mod Manager (mmm) Setup     "
+    echo "=========================================="
+    echo "==> Working directory: $MINECRAFT_DIR"
+    echo "==> Using mmm binary:  $MMM_CMD"
+    local MMM_VERSION
+    MMM_VERSION=$("$MMM_CMD" --version 2>/dev/null || echo "unknown")
+    echo "==> mmm version:       v$MMM_VERSION"
+
+    # Auto-detect Game Version if needed
+    if [[ -z "$GAME_VERSION" ]]; then
+        echo "==> Auto-detecting Minecraft version..."
+        if [[ -f "$MINECRAFT_DIR/logs/latest.log" ]]; then
+            local DETECTED_VER
+            DETECTED_VER=$(grep -m1 -oP 'Loading Minecraft \K[0-9a-zA-Z._-]+(?= with)' "$MINECRAFT_DIR/logs/latest.log" || true)
+            if [[ -n "$DETECTED_VER" ]]; then
+                GAME_VERSION="$DETECTED_VER"
+                echo "    Found game version in logs/latest.log: $GAME_VERSION"
+            fi
+        fi
+
+        if [[ -z "$GAME_VERSION" && -d "$MINECRAFT_DIR/versions" ]]; then
+            local LATEST_JSON
+            LATEST_JSON=$(ls -td "$MINECRAFT_DIR/versions"/*/*.json 2>/dev/null | head -n 1 || true)
+            if [[ -n "$LATEST_JSON" && -f "$LATEST_JSON" ]]; then
+                local INHERITED_VER
+                INHERITED_VER=$(grep -m1 -oP '"inheritsFrom":\s*"\K[^"]+' "$LATEST_JSON" || true)
+                if [[ -n "$INHERITED_VER" ]]; then
+                    GAME_VERSION="$INHERITED_VER"
+                    echo "    Found game version from $(basename "$LATEST_JSON"): $GAME_VERSION"
+                fi
+            fi
+        fi
+
+        if [[ -z "$GAME_VERSION" ]]; then
+            if [[ -t 0 ]]; then
+                read -rp "Could not auto-detect Minecraft version. Please enter it (e.g. 1.21.1, 26.2): " GAME_VERSION
+            else
+                echo "Error: Could not auto-detect Minecraft version. Specify with -g/--game-version." >&2
+                exit 1
+            fi
+        fi
+    fi
+
+    # Auto-detect Mod Loader if needed
+    if [[ -z "$LOADER" ]]; then
+        echo "==> Auto-detecting Mod Loader..."
+        if [[ -f "$MINECRAFT_DIR/logs/latest.log" ]]; then
+            local DETECTED_LOADER
+            DETECTED_LOADER=$(grep -m1 -oP 'with \K[0-9a-zA-Z._-]+(?= Loader)' "$MINECRAFT_DIR/logs/latest.log" | tr '[:upper:]' '[:lower:]' || true)
+            if [[ -n "$DETECTED_LOADER" ]]; then
+                LOADER="$DETECTED_LOADER"
+                echo "    Found loader in logs/latest.log: $LOADER"
+            fi
+        fi
+
+        if [[ -z "$LOADER" && -d "$MINECRAFT_DIR/versions" ]]; then
+            if compgen -G "$MINECRAFT_DIR/versions/fabric-*" >/dev/null; then
+                LOADER="fabric"
+            elif compgen -G "$MINECRAFT_DIR/versions/quilt-*" >/dev/null; then
+                LOADER="quilt"
+            elif compgen -G "$MINECRAFT_DIR/versions/neoforge-*" >/dev/null; then
+                LOADER="neoforge"
+            elif compgen -G "$MINECRAFT_DIR/versions/forge-*" >/dev/null; then
+                LOADER="forge"
+            fi
+            [[ -n "$LOADER" ]] && echo "    Inferred loader from versions directory: $LOADER"
+        fi
+
+        if [[ -z "$LOADER" ]]; then
+            if [[ -t 0 ]]; then
+                read -rp "Could not auto-detect Mod Loader. Enter loader [fabric]: " INPUT_LOADER
+                LOADER="${INPUT_LOADER:-fabric}"
+            else
+                LOADER="fabric"
+                echo "    Defaulting to loader: fabric"
+            fi
+        fi
+    fi
+
+    echo "==> Configuration target:"
+    echo "    Loader:        $LOADER"
+    echo "    Game Version:  $GAME_VERSION"
+    echo "    Release Types: $RELEASE_TYPES"
+    echo "    Mods Folder:   $MODS_FOLDER"
+
+    mkdir -p "$MINECRAFT_DIR/$MODS_FOLDER"
+
+    local CONFIG_FILE="$MINECRAFT_DIR/modlist.json"
+    if [[ -f "$CONFIG_FILE" ]]; then
+        if [[ "$FORCE" == true ]]; then
+            echo "==> --force specified: Overwriting existing $CONFIG_FILE..."
+            rm -f "$CONFIG_FILE"
+        else
+            if [[ -t 0 ]]; then
+                echo ""
+                read -rp "Warning: $CONFIG_FILE already exists. Overwrite? (y/N): " CONFIRM
+                case "$CONFIRM" in
+                    [yY]|[yY][eE][sS])
+                        echo "    Overwriting existing configuration..."
+                        rm -f "$CONFIG_FILE"
+                        ;;
+                    *)
+                        echo "    Keeping existing $CONFIG_FILE. Skipping initialization."
+                        ;;
+                esac
+            else
+                echo "Warning: $CONFIG_FILE already exists. Use --force to overwrite."
+            fi
+        fi
+    fi
+
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo "==> Initializing $CONFIG_FILE with mmm..."
+        (cd "$MINECRAFT_DIR" && "$MMM_CMD" init -l "$LOADER" -g "$GAME_VERSION" -r "$RELEASE_TYPES" -m "$MODS_FOLDER")
+        echo "Successfully generated $CONFIG_FILE"
+    fi
+
+    if [[ "$DO_SCAN" == true ]]; then
+        local RESOLVED_MODS_DIR="$MINECRAFT_DIR/$MODS_FOLDER"
+        local JAR_COUNT
+        JAR_COUNT=$(find "$RESOLVED_MODS_DIR" -maxdepth 1 -name "*.jar" 2>/dev/null | wc -l)
+        if [[ "$JAR_COUNT" -gt 0 ]]; then
+            echo ""
+            echo "==> Found $JAR_COUNT .jar mod(s) in $MODS_FOLDER. Scanning with mmm (prefer: $PREFER)..."
+            (cd "$MINECRAFT_DIR" && "$MMM_CMD" scan -a -p "$PREFER")
+        else
+            echo "==> No .jar files found in $MODS_FOLDER to scan."
+        fi
+    fi
+
+    echo ""
+    echo "=========================================="
+    echo "    Minecraft Mod Manager Setup Complete! "
+    echo "=========================================="
+    echo ""
+    echo "Current mod configuration summary:"
+    (cd "$MINECRAFT_DIR" && "$MMM_CMD" list || true)
+}
+
+# Main dispatcher
+if [[ $# -eq 0 ]]; then
+    print_main_help
+    exit 0
+fi
+
+case "$1" in
+    init)
+        shift
+        cmd_init "$@"
+        ;;
+    -h|--help)
+        print_main_help
+        exit 0
+        ;;
+    *)
+        # Always change directory to MINECRAFT_DIR and forward commands to mmm
+        cd "$MINECRAFT_DIR"
+        exec "$MMM_CMD" "$@"
+        ;;
+esac
