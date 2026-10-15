@@ -27,13 +27,21 @@ This ensures that commands like `list`, `add`, `update`, `install`, and `remove`
 
 ## Installation
 
-Run the included install script:
+### One-line Install (Standalone)
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/HeapHeapHooray/mimo/refs/heads/main/install.sh | bash
+```
+
+### From Source
+
+```bash
+git clone https://github.com/HeapHeapHooray/mimo.git
+cd mimo
 ./install.sh
 ```
 
-This creates symlinks (`mimo` and `minecraft-mods`) in `~/.local/bin`.
+This installs `mimo` and the `minecraft-mods` alias into `~/.local/bin`.
 
 ---
 
