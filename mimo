@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# minecraft-mods
+# mimo
 # Wrapper for Minecraft Mod Manager (mmm) operating inside ~/.minecraft.
 # Ensures all commands run with ~/.minecraft as the working directory so
 # the instance's modlist.json is always used.
@@ -35,7 +35,7 @@ fi
 
 print_main_help() {
     cat <<EOF
-Usage: minecraft-mods <command> [options]
+Usage: mimo <command> [options]
 
 CLI tool to manage Minecraft mods using Minecraft Mod Manager (mmm),
 always anchored to $MINECRAFT_DIR.
@@ -43,7 +43,7 @@ always anchored to $MINECRAFT_DIR.
 Commands:
   init [options]               Set up and configure modlist.json (auto-detects version & loader)
   list, l                      List installed and configured mods
-  add, a <platform> <id>       Add a mod (e.g. minecraft-mods add modrinth sodium)
+  add, a <platform> <id>       Add a mod (e.g. mimo add modrinth sodium)
   remove <mods...>             Remove one or more mods from config and filesystem
   update, u                    Update managed mods to the latest matching version
   install, i                   Download and install all mods from modlist.json
@@ -56,7 +56,7 @@ Global Options:
   -h, --help                   Show this help message (or mmm help if command provided)
   -V, --version                Output the version number
 
-Run 'minecraft-mods init --help' for options specific to initialization.
+Run 'mimo init --help' for options specific to initialization.
 EOF
 }
 
@@ -71,7 +71,7 @@ cmd_init() {
 
     print_init_help() {
         cat <<EOF
-Usage: minecraft-mods init [OPTIONS]
+Usage: mimo init [OPTIONS]
 
 Automatically set up and configure Minecraft Mod Manager (modlist.json) for $MINECRAFT_DIR.
 

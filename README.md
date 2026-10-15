@@ -1,4 +1,4 @@
-# minecraft-mods
+# mimo (Minecraft Mod Manager CLI)
 
 A command-line wrapper for [Minecraft Mod Manager (`mmm`)](https://github.com/meza/minecraft-mod-manager) that anchors all operations to your Minecraft directory (`~/.minecraft`).
 
@@ -9,7 +9,7 @@ This ensures that commands like `list`, `add`, `update`, `install`, and `remove`
 ## Features
 
 - **Always Anchored**: Executes all `mmm` operations inside `~/.minecraft` regardless of your current terminal working directory.
-- **Automated Setup (`minecraft-mods init`)**:
+- **Automated Setup (`mimo init`)**:
   - Automatically detects the active Minecraft version (e.g. `26.2`, `1.21.11`) and mod loader (`fabric`, `quilt`, `forge`, `neoforge`) from Minecraft logs or version metadata.
   - Automatically initializes `modlist.json` with sensible defaults.
   - Automatically scans existing `.jar` mods in `./mods` via Modrinth/CurseForge and adds them to configuration.
@@ -33,7 +33,7 @@ Run the included install script:
 ./install.sh
 ```
 
-This creates a symlink in `~/.local/bin/minecraft-mods`.
+This creates symlinks (`mimo` and `minecraft-mods`) in `~/.local/bin`.
 
 ---
 
@@ -44,13 +44,13 @@ This creates a symlink in `~/.local/bin/minecraft-mods`.
 Automatically detect the game version, loader, create `modlist.json`, and scan existing mods:
 
 ```bash
-minecraft-mods init
+mimo init
 ```
 
 Override detection or customize options:
 
 ```bash
-minecraft-mods init --game-version 26.2 --loader fabric --prefer modrinth --force
+mimo init --game-version 26.2 --loader fabric --prefer modrinth --force
 ```
 
 #### Init Options:
@@ -71,24 +71,24 @@ From any directory:
 
 ```bash
 # List configured and installed mods
-minecraft-mods list
+mimo list
 
 # Add a mod
-minecraft-mods add modrinth sodium
-minecraft-mods add modrinth iris
+mimo add modrinth sodium
+mimo add modrinth iris
 
 # Check and download updates for managed mods
-minecraft-mods update
+mimo update
 
 # Install all mods from modlist.json
-minecraft-mods install
+mimo install
 
 # Remove a mod
-minecraft-mods remove sodium
+mimo remove sodium
 
 # Scan mods directory for unmanaged mods
-minecraft-mods scan -a
+mimo scan -a
 
 # View help
-minecraft-mods --help
+mimo --help
 ```

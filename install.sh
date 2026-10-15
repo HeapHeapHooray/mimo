@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 #
 # install.sh
-# Installs minecraft-mods to ~/.local/bin by creating a symlink.
+# Installs mimo to ~/.local/bin by creating a symlink.
 #
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="${HOME}/.local/bin"
-SOURCE_BIN="${SCRIPT_DIR}/minecraft-mods"
-TARGET_BIN="${TARGET_DIR}/minecraft-mods"
+SOURCE_BIN="${SCRIPT_DIR}/mimo"
+TARGET_BIN="${TARGET_DIR}/mimo"
 
 mkdir -p "$TARGET_DIR"
 chmod +x "$SOURCE_BIN"
 
 ln -sf "$SOURCE_BIN" "$TARGET_BIN"
 echo "==> Installed symlink: $TARGET_BIN -> $SOURCE_BIN"
+
+# Also create backwards-compatible minecraft-mods alias
+ln -sf "$SOURCE_BIN" "${TARGET_DIR}/minecraft-mods"
+echo "==> Installed alias:   ${TARGET_DIR}/minecraft-mods -> $SOURCE_BIN"
 
 # Check PATH
 case ":$PATH:" in
@@ -31,4 +35,4 @@ esac
 
 echo ""
 echo "Installation complete! Try running:"
-echo "    minecraft-mods --help"
+echo "    mimo --help"
